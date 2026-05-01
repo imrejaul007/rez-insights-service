@@ -139,7 +139,7 @@ const insightSchema = new Schema<IInsightDocument>(
     timestamps: true,
     toJSON: {
       virtuals: true,
-      transform: (_doc, ret) => {
+      transform: (_doc, ret: Record<string, unknown>) => {
         delete ret.__v;
         return ret;
       },
@@ -163,7 +163,7 @@ export const Insight: Model<IInsightDocument> = mongoose.model<IInsightDocument>
 export async function findUserInsights(
   userId: string,
   options: InsightQueryOptions = {}
-): Promise<IInsightDocument[]> {
+): Promise<unknown[]> {
   const { status, type, priority, limit = 50, skip = 0, includeExpired = false } = options;
 
   const query: Record<string, unknown> = { userId };
@@ -185,7 +185,7 @@ export async function findUserInsights(
 export async function findMerchantInsights(
   merchantId: string,
   options: InsightQueryOptions = {}
-): Promise<IInsightDocument[]> {
+): Promise<unknown[]> {
   const { status, type, priority, limit = 50, skip = 0, includeExpired = false } = options;
 
   const query: Record<string, unknown> = { merchantId };

@@ -6,7 +6,7 @@ let redisClient: Redis | null = null;
 export function createRedisClient(): Redis {
   const { REDIS_HOST, REDIS_PORT, REDIS_PASSWORD, REDIS_TLS } = env;
 
-  const redisOptions: Record<string, string | boolean | number> = {
+  const client = new Redis({
     host: REDIS_HOST,
     port: parseInt(REDIS_PORT, 10),
     retryStrategy: (times: number) => {
@@ -16,17 +16,9 @@ export function createRedisClient(): Redis {
     maxRetriesPerRequest: 3,
     lazyConnect: true,
     enableOfflineQueue: false,
-  };
-
-  if (REDIS_PASSWORD) {
-    redisOptions.password = REDIS_PASSWORD;
-  }
-
-  if (REDIS_TLS === 'true' || REDIS_TLS === '1') {
-    redisOptions.tls = true;
-  }
-
-  const client = new Redis(redisOptions as ConstructorParameters<typeof Redis>[0]);
+    password: REDIS_PASSWORD || undefined,
+    tls: REDIS_TLS === 'true' || REDIS_TLS === '1' ? {} : undefined,
+  });
 
   client.on('connect', () => {
     console.log('Redis client connected');
@@ -71,11 +63,9 @@ export async function disconnectRedis(): Promise<void> {
     try {
       await redisClient.quit();
       redisClient = null;
-      console.log('Redis disconnected successfully');
+      console.log('Redis disconnected');
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Unknown Redis disconnect error';
-      console.error('Redis disconnect failed:', errorMessage);
-      throw error;
+      console.error('Redis disconnect error:', error);
     }
   }
 }
@@ -87,19 +77,19 @@ export function getRedisClient(): Redis {
   return redisClient;
 }
 
-export async function cacheGet<T>(key: string): Promise<T | null> {
+// Cache helper functions
+export async function cacheGet(key: string): Promise<string | null> {
   const client = getRedisClient();
-  const data = await client.get(key);
-  if (data) {
-    return JSON.parse(data) as T;
-  }
-  return null;
+  return client.get(key);
 }
 
-export async function cacheSet(key: string, value: unknown, ttlSeconds?: number): Promise<void> {
+export async function cacheSet(key: string, value: string, ttlSeconds?: number): Promise<void> {
   const client = getRedisClient();
-  const ttl = ttlSeconds || parseInt(env.INSIGHT_CACHE_TTL_SECONDS, 10);
-  await client.setex(key, ttl, JSON.stringify(value));
+  if (ttlSeconds) {
+    await client.setex(key, ttlSeconds, value);
+  } else {
+    await client.set(key, value);
+  }
 }
 
 export async function cacheDelete(key: string): Promise<void> {

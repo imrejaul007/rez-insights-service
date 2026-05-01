@@ -1,5 +1,5 @@
 import express, { Request, Response, NextFunction } from 'express';
-import { env } from './config/env';
+import { env, isDevelopment } from './config/env';
 import { connectMongoDB, disconnectMongoDB } from './config/mongodb';
 import { connectRedis, disconnectRedis, getRedisClient } from './config/redis';
 import { authMiddleware, optionalAuthMiddleware } from './middleware/auth';
@@ -21,7 +21,7 @@ app.use((req: Request, _res: Response, next: NextFunction) => {
 });
 
 app.get('/health', async (_req: Request, res: Response) => {
-  const health = {
+  const health: Record<string, unknown> = {
     status: 'ok',
     timestamp: new Date().toISOString(),
     uptime: process.uptime(),
@@ -80,7 +80,7 @@ app.use((err: Error, _req: Request, res: Response, _next: NextFunction) => {
   res.status(500).json({
     success: false,
     error: 'Internal Server Error',
-    message: env.isDevelopment ? err.message : 'An unexpected error occurred',
+    message: isDevelopment ? err.message : 'An unexpected error occurred',
   });
 });
 
