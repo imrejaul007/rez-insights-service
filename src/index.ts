@@ -2,9 +2,13 @@ import express, { Request, Response, NextFunction } from 'express';
 import { env } from './config/env';
 import { connectMongoDB, disconnectMongoDB } from './config/mongodb';
 import { connectRedis, disconnectRedis, getRedis } from './config/redis';
+import { initSentry } from './config/sentry';
 import { authMiddleware, optionalAuthMiddleware } from './middleware/auth';
 import { rateLimiter } from './middleware/rateLimiter';
 import insightsRoutes from './routes/insights.routes';
+
+// Initialize Sentry
+initSentry();
 
 const app = express();
 
