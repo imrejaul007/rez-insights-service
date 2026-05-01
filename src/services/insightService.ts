@@ -30,7 +30,7 @@ export const CreateInsightSchema = z.object({
   recommendation: z.string().min(1, 'Recommendation is required').max(2000, 'Recommendation cannot exceed 2000 characters'),
   actionData: z.record(z.unknown()).optional(),
   confidence: z.number().min(0).max(1, 'Confidence must be between 0 and 1'),
-  expiresAt: z.union([z.string().datetime(), z.date()]).transform(val => val instanceof Date ? val : new Date(val)),
+  expiresAt: z.string().datetime().or(z.date()),
   metadata: z.record(z.unknown()).optional(),
 });
 
@@ -48,23 +48,23 @@ export const InsightQuerySchema = z.object({
   status: z.enum(['new', 'viewed', 'actioned', 'dismissed'] as const).optional(),
   type: z.enum(['churn_risk', 'upsell', 'cross_sell', 'reorder', 'campaign', 'general'] as const).optional(),
   priority: z.enum(['high', 'medium', 'low'] as const).optional(),
-  limit: z.coerce.number().min(1).max(100).default(50),
-  skip: z.coerce.number().min(0).default(0),
-  includeExpired: z.boolean().default(false),
+  limit: z.coerce.number().min(1).max(100).optional(),
+  skip: z.coerce.number().min(0).optional(),
+  includeExpired: z.coerce.boolean().optional(),
 });
 
-interface ServiceResult<T> {
+export interface ServiceResult<T> {
   success: boolean;
   data?: T;
   error?: string;
   statusCode: number;
 }
 
-function successResult<T>(data: T): ServiceResult<T> {
-  return { success: true, data, statusCode: 200 };
+function successResult<T>(data: T, statusCode = 200): ServiceResult<T> {
+  return { success: true, data, statusCode };
 }
 
-function errorResult<T>(error: string, statusCode: number): ServiceResult<T> {
+function errorResult(error: string, statusCode = 400): ServiceResult<never> {
   return { success: false, error, statusCode };
 }
 
@@ -72,18 +72,48 @@ function getCacheKey(prefix: string, id: string): string {
   return `insights:${prefix}:${id}`;
 }
 
-export async function create(data: CreateInsightDTO): Promise<ServiceResult<IInsightDocument>> {
+function getUserCachePattern(userId: string): string {
+  return `insights:user:${userId}:*`;
+}
+
+function getMerchantCachePattern(merchantId: string): string {
+  return `insights:merchant:${merchantId}:*`;
+}
+
+export async function createNewInsight(data: unknown): Promise<ServiceResult<IInsightDocument>> {
   try {
     const validatedData = CreateInsightSchema.parse(data);
-    const insight = await createInsight(validatedData);
-    await cacheDeletePattern(`insights:user:${insight.userId}:*`);
+
+    const expiresAt = typeof validatedData.expiresAt === 'string'
+      ? new Date(validatedData.expiresAt)
+      : validatedData.expiresAt;
+
+    const insightDTO: CreateInsightDTO = {
+      userId: validatedData.userId,
+      merchantId: validatedData.merchantId,
+      type: validatedData.type as InsightType,
+      priority: validatedData.priority as InsightPriority,
+      title: validatedData.title,
+      description: validatedData.description,
+      recommendation: validatedData.recommendation,
+      actionData: validatedData.actionData,
+      confidence: validatedData.confidence,
+      expiresAt,
+      metadata: validatedData.metadata,
+    };
+
+    const insight = await createInsight(insightDTO);
+
+    await cacheDeletePattern(getUserCachePattern(insight.userId));
     if (insight.merchantId) {
-      await cacheDeletePattern(`insights:merchant:${insight.merchantId}:*`);
+      await cacheDeletePattern(getMerchantCachePattern(insight.merchantId));
     }
-    return successResult(insight);
+
+    return successResult(insight, 201);
   } catch (error) {
     if (error instanceof z.ZodError) {
-      return errorResult(`Validation error: ${error.errors.map(e => e.message).join(', ')}`, 400);
+      const errorMessages = error.errors.map((e) => `${e.path.join('.')}: ${e.message}`).join(', ');
+      return errorResult(`Validation failed: ${errorMessages}`, 400);
     }
     if (error instanceof Error) {
       return errorResult(`Failed to create insight: ${error.message}`, 500);
@@ -92,86 +122,25 @@ export async function create(data: CreateInsightDTO): Promise<ServiceResult<IIns
   }
 }
 
-export async function update(id: string, data: UpdateInsightDTO): Promise<ServiceResult<IInsightDocument>> {
+export async function getInsightById(id: string): Promise<ServiceResult<IInsightDocument>> {
   try {
     if (!id || id.length !== 24) {
       return errorResult('Invalid insight ID format', 400);
     }
-    const validatedData = UpdateInsightSchema.parse(data);
-    const insight = await updateInsight(id, validatedData);
-    if (!insight) {
-      return errorResult('Insight not found', 404);
-    }
-    await cacheDelete(`insights:id:${id}`);
-    await cacheDeletePattern(`insights:user:${insight.userId}:*`);
-    return successResult(insight);
-  } catch (error) {
-    if (error instanceof z.ZodError) {
-      return errorResult(`Validation error: ${error.errors.map(e => e.message).join(', ')}`, 400);
-    }
-    if (error instanceof Error) {
-      return errorResult(`Failed to update insight: ${error.message}`, 500);
-    }
-    return errorResult('An unknown error occurred while updating the insight', 500);
-  }
-}
 
-export async function remove(id: string): Promise<ServiceResult<{ deleted: boolean }>> {
-  try {
-    if (!id || id.length !== 24) {
-      return errorResult('Invalid insight ID format', 400);
-    }
-    const deleted = await deleteInsight(id);
-    if (!deleted) {
-      return errorResult('Insight not found', 404);
-    }
-    await cacheDelete(`insights:id:${id}`);
-    await cacheDeletePattern('insights:user:*');
-    return successResult({ deleted: true });
-  } catch (error) {
-    if (error instanceof Error) {
-      return errorResult(`Failed to delete insight: ${error.message}`, 500);
-    }
-    return errorResult('An unknown error occurred while deleting the insight', 500);
-  }
-}
-
-export async function dismiss(id: string, userId: string): Promise<ServiceResult<IInsightDocument>> {
-  try {
-    if (!id || id.length !== 24) {
-      return errorResult('Invalid insight ID format', 400);
-    }
-    const insight = await dismissInsight(id);
-    if (!insight) {
-      return errorResult('Insight not found', 404);
-    }
-    await cacheDelete(`insights:id:${id}`);
-    await cacheDeletePattern(`insights:user:${userId}:*`);
-    return successResult(insight);
-  } catch (error) {
-    if (error instanceof Error) {
-      return errorResult(`Failed to dismiss insight: ${error.message}`, 500);
-    }
-    return errorResult('An unknown error occurred while dismissing the insight', 500);
-  }
-}
-
-export async function getInsightById(id: string): Promise<ServiceResult<IInsightDocument | null>> {
-  try {
-    if (!id || id.length !== 24) {
-      return errorResult('Invalid insight ID format', 400);
-    }
     const cacheKey = getCacheKey('id', id);
-    const cached = await cacheGet(cacheKey);
+    const cached = await cacheGet<IInsightDocument>(cacheKey);
     if (cached) {
-      const parsed = JSON.parse(cached);
-      return successResult(parsed as IInsightDocument);
+      return successResult(cached);
     }
+
     const insight = await findInsightById(id);
     if (!insight) {
       return errorResult('Insight not found', 404);
     }
-    await cacheSet(cacheKey, JSON.stringify(insight.toJSON()));
+
+    await cacheSet(cacheKey, insight.toJSON());
+
     return successResult(insight);
   } catch (error) {
     if (error instanceof Error) {
@@ -184,11 +153,12 @@ export async function getInsightById(id: string): Promise<ServiceResult<IInsight
 export async function getUserInsights(
   userId: string,
   query: unknown = {}
-): Promise<ServiceResult<unknown[]>> {
+): Promise<ServiceResult<IInsightDocument[]>> {
   try {
     if (!userId) {
       return errorResult('User ID is required', 400);
     }
+
     const validatedQuery = InsightQuerySchema.parse(query);
     const options: InsightQueryOptions = {
       status: validatedQuery.status as InsightStatus | undefined,
@@ -198,18 +168,22 @@ export async function getUserInsights(
       skip: validatedQuery.skip,
       includeExpired: validatedQuery.includeExpired,
     };
+
     const cacheKey = getCacheKey('user', `${userId}:${JSON.stringify(options)}`);
-    const cached = await cacheGet(cacheKey);
+    const cached = await cacheGet<IInsightDocument[]>(cacheKey);
     if (cached) {
-      const parsed = JSON.parse(cached);
-      return successResult(parsed);
+      return successResult(cached);
     }
+
     const insights = await findUserInsights(userId, options);
-    await cacheSet(cacheKey, JSON.stringify(insights));
+
+    await cacheSet(cacheKey, insights);
+
     return successResult(insights);
   } catch (error) {
     if (error instanceof z.ZodError) {
-      return errorResult(`Validation error: ${error.errors.map(e => e.message).join(', ')}`, 400);
+      const errorMessages = error.errors.map((e) => `${e.path.join('.')}: ${e.message}`).join(', ');
+      return errorResult(`Validation failed: ${errorMessages}`, 400);
     }
     if (error instanceof Error) {
       return errorResult(`Failed to fetch user insights: ${error.message}`, 500);
@@ -221,11 +195,12 @@ export async function getUserInsights(
 export async function getMerchantInsights(
   merchantId: string,
   query: unknown = {}
-): Promise<ServiceResult<unknown[]>> {
+): Promise<ServiceResult<IInsightDocument[]>> {
   try {
     if (!merchantId) {
       return errorResult('Merchant ID is required', 400);
     }
+
     const validatedQuery = InsightQuerySchema.parse(query);
     const options: InsightQueryOptions = {
       status: validatedQuery.status as InsightStatus | undefined,
@@ -235,18 +210,22 @@ export async function getMerchantInsights(
       skip: validatedQuery.skip,
       includeExpired: validatedQuery.includeExpired,
     };
+
     const cacheKey = getCacheKey('merchant', `${merchantId}:${JSON.stringify(options)}`);
-    const cached = await cacheGet(cacheKey);
+    const cached = await cacheGet<IInsightDocument[]>(cacheKey);
     if (cached) {
-      const parsed = JSON.parse(cached);
-      return successResult(parsed);
+      return successResult(cached);
     }
+
     const insights = await findMerchantInsights(merchantId, options);
-    await cacheSet(cacheKey, JSON.stringify(insights));
+
+    await cacheSet(cacheKey, insights);
+
     return successResult(insights);
   } catch (error) {
     if (error instanceof z.ZodError) {
-      return errorResult(`Validation error: ${error.errors.map(e => e.message).join(', ')}`, 400);
+      const errorMessages = error.errors.map((e) => `${e.path.join('.')}: ${e.message}`).join(', ');
+      return errorResult(`Validation failed: ${errorMessages}`, 400);
     }
     if (error instanceof Error) {
       return errorResult(`Failed to fetch merchant insights: ${error.message}`, 500);
@@ -255,13 +234,116 @@ export async function getMerchantInsights(
   }
 }
 
-export async function getUserInsightCount(userId: string): Promise<ServiceResult<{ count: number }>> {
+export async function updateInsightStatus(
+  id: string,
+  data: unknown
+): Promise<ServiceResult<IInsightDocument>> {
+  try {
+    if (!id || id.length !== 24) {
+      return errorResult('Invalid insight ID format', 400);
+    }
+
+    const validatedData = UpdateInsightSchema.parse(data);
+
+    const updateDTO: UpdateInsightDTO = {
+      status: validatedData.status as InsightStatus | undefined,
+      priority: validatedData.priority as InsightPriority | undefined,
+      title: validatedData.title,
+      description: validatedData.description,
+      recommendation: validatedData.recommendation,
+      actionData: validatedData.actionData,
+      metadata: validatedData.metadata,
+    };
+
+    const insight = await updateInsight(id, updateDTO);
+    if (!insight) {
+      return errorResult('Insight not found', 404);
+    }
+
+    await cacheDelete(getCacheKey('id', id));
+    await cacheDeletePattern(getUserCachePattern(insight.userId));
+    if (insight.merchantId) {
+      await cacheDeletePattern(getMerchantCachePattern(insight.merchantId));
+    }
+
+    return successResult(insight);
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      const errorMessages = error.errors.map((e) => `${e.path.join('.')}: ${e.message}`).join(', ');
+      return errorResult(`Validation failed: ${errorMessages}`, 400);
+    }
+    if (error instanceof Error) {
+      return errorResult(`Failed to update insight: ${error.message}`, 500);
+    }
+    return errorResult('An unknown error occurred while updating the insight', 500);
+  }
+}
+
+export async function dismissInsightById(id: string): Promise<ServiceResult<IInsightDocument>> {
+  try {
+    if (!id || id.length !== 24) {
+      return errorResult('Invalid insight ID format', 400);
+    }
+
+    const insight = await dismissInsight(id);
+    if (!insight) {
+      return errorResult('Insight not found', 404);
+    }
+
+    await cacheDelete(getCacheKey('id', id));
+    await cacheDeletePattern(getUserCachePattern(insight.userId));
+    if (insight.merchantId) {
+      await cacheDeletePattern(getMerchantCachePattern(insight.merchantId));
+    }
+
+    return successResult(insight);
+  } catch (error) {
+    if (error instanceof Error) {
+      return errorResult(`Failed to dismiss insight: ${error.message}`, 500);
+    }
+    return errorResult('An unknown error occurred while dismissing the insight', 500);
+  }
+}
+
+export async function removeInsight(id: string): Promise<ServiceResult<{ deleted: boolean }>> {
+  try {
+    if (!id || id.length !== 24) {
+      return errorResult('Invalid insight ID format', 400);
+    }
+
+    const existingInsight = await findInsightById(id);
+    if (!existingInsight) {
+      return errorResult('Insight not found', 404);
+    }
+
+    const deleted = await deleteInsight(id);
+    if (!deleted) {
+      return errorResult('Failed to delete insight', 500);
+    }
+
+    await cacheDelete(getCacheKey('id', id));
+    await cacheDeletePattern(getUserCachePattern(existingInsight.userId));
+    if (existingInsight.merchantId) {
+      await cacheDeletePattern(getMerchantCachePattern(existingInsight.merchantId));
+    }
+
+    return successResult({ deleted: true }, 200);
+  } catch (error) {
+    if (error instanceof Error) {
+      return errorResult(`Failed to delete insight: ${error.message}`, 500);
+    }
+    return errorResult('An unknown error occurred while deleting the insight', 500);
+  }
+}
+
+export async function getUserInsightCount(userId: string, status?: InsightStatus): Promise<ServiceResult<number>> {
   try {
     if (!userId) {
       return errorResult('User ID is required', 400);
     }
-    const count = await countUserInsights(userId);
-    return successResult({ count });
+
+    const count = await countUserInsights(userId, status);
+    return successResult(count);
   } catch (error) {
     if (error instanceof Error) {
       return errorResult(`Failed to count user insights: ${error.message}`, 500);

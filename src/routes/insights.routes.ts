@@ -1,12 +1,12 @@
 import { Router, Request, Response, NextFunction } from 'express';
 import {
-  create,
+  createNewInsight,
   getInsightById,
   getUserInsights,
   getMerchantInsights,
-  update,
-  dismiss,
-  remove,
+  updateInsightStatus,
+  dismissInsightById,
+  removeInsight,
   getUserInsightCount,
 } from '../services/insightService';
 
@@ -39,7 +39,7 @@ function sendResponse<T>(res: Response, result: { success: boolean; data?: T; er
 router.post(
   '/',
   asyncHandler(async (req: Request, res: Response) => {
-    const result = await create(req.body);
+    const result = await createNewInsight(req.body);
     sendResponse(res, result);
   })
 );
@@ -68,7 +68,8 @@ router.get(
   '/user/:userId/count',
   asyncHandler(async (req: Request, res: Response) => {
     const { userId } = req.params;
-    const result = await getUserInsightCount(userId);
+    const status = req.query.status as 'new' | 'viewed' | 'actioned' | 'dismissed' | undefined;
+    const result = await getUserInsightCount(userId, status);
     sendResponse(res, result);
   })
 );
@@ -86,7 +87,7 @@ router.patch(
   '/:id',
   asyncHandler(async (req: Request, res: Response) => {
     const { id } = req.params;
-    const result = await update(id, req.body);
+    const result = await updateInsightStatus(id, req.body);
     sendResponse(res, result);
   })
 );
@@ -95,21 +96,7 @@ router.delete(
   '/:id',
   asyncHandler(async (req: Request, res: Response) => {
     const { id } = req.params;
-    const result = await remove(id);
-    sendResponse(res, result);
-  })
-);
-
-router.post(
-  '/:id/dismiss',
-  asyncHandler(async (req: Request, res: Response) => {
-    const { id } = req.params;
-    const { userId } = req.body;
-    if (!userId) {
-      res.status(400).json({ success: false, error: 'userId is required in body' });
-      return;
-    }
-    const result = await dismiss(id, userId);
+    const result = await dismissInsightById(id);
     sendResponse(res, result);
   })
 );

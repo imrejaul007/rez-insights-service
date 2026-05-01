@@ -163,7 +163,7 @@ export const Insight: Model<IInsightDocument> = mongoose.model<IInsightDocument>
 export async function findUserInsights(
   userId: string,
   options: InsightQueryOptions = {}
-): Promise<unknown[]> {
+): Promise<IInsightDocument[]> {
   const { status, type, priority, limit = 50, skip = 0, includeExpired = false } = options;
 
   const query: Record<string, unknown> = { userId };
@@ -179,13 +179,13 @@ export async function findUserInsights(
     .sort({ priority: 1, createdAt: -1 })
     .skip(skip)
     .limit(limit)
-    .lean();
+    .lean() as unknown as IInsightDocument[];
 }
 
 export async function findMerchantInsights(
   merchantId: string,
   options: InsightQueryOptions = {}
-): Promise<unknown[]> {
+): Promise<IInsightDocument[]> {
   const { status, type, priority, limit = 50, skip = 0, includeExpired = false } = options;
 
   const query: Record<string, unknown> = { merchantId };
@@ -201,7 +201,7 @@ export async function findMerchantInsights(
     .sort({ priority: 1, createdAt: -1 })
     .skip(skip)
     .limit(limit)
-    .lean();
+    .lean() as unknown as IInsightDocument[];
 }
 
 export async function findInsightById(id: string): Promise<IInsightDocument | null> {
