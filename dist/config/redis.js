@@ -3,20 +3,24 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
+exports.redis = void 0;
 exports.createRedisClient = createRedisClient;
 exports.connectRedis = connectRedis;
 exports.disconnectRedis = disconnectRedis;
-exports.getRedisClient = getRedisClient;
+exports.getRedis = getRedis;
+exports.getRedisClient = getRedis;
 exports.cacheGet = cacheGet;
 exports.cacheSet = cacheSet;
+exports.cacheDel = cacheDel;
 exports.cacheDelete = cacheDelete;
 exports.cacheDeletePattern = cacheDeletePattern;
 const ioredis_1 = __importDefault(require("ioredis"));
 const env_1 = require("./env");
 let redisClient = null;
+exports.redis = redisClient;
 function createRedisClient() {
     const { REDIS_HOST, REDIS_PORT, REDIS_PASSWORD, REDIS_TLS } = env_1.env;
-    const client = new ioredis_1.default({
+    const config = {
         host: REDIS_HOST,
         port: parseInt(REDIS_PORT, 10),
         retryStrategy: (times) => {
@@ -26,9 +30,14 @@ function createRedisClient() {
         maxRetriesPerRequest: 3,
         lazyConnect: true,
         enableOfflineQueue: false,
-        password: REDIS_PASSWORD || undefined,
-        tls: REDIS_TLS === 'true' || REDIS_TLS === '1' ? {} : undefined,
-    });
+    };
+    if (REDIS_PASSWORD) {
+        config.password = REDIS_PASSWORD;
+    }
+    if (REDIS_TLS === 'true' || REDIS_TLS === '1') {
+        config.tls = true;
+    }
+    const client = new ioredis_1.default(config);
     client.on('connect', () => {
         console.log('Redis client connected');
     });
@@ -48,7 +57,7 @@ function createRedisClient() {
 }
 async function connectRedis() {
     if (!redisClient) {
-        redisClient = createRedisClient();
+        exports.redis = redisClient = createRedisClient();
     }
     try {
         await redisClient.connect();
@@ -64,40 +73,48 @@ async function disconnectRedis() {
     if (redisClient) {
         try {
             await redisClient.quit();
-            redisClient = null;
-            console.log('Redis disconnected');
+            exports.redis = redisClient = null;
+            console.log('Redis disconnected successfully');
         }
         catch (error) {
-            console.error('Redis disconnect error:', error);
+            const errorMessage = error instanceof Error ? error.message : 'Unknown Redis disconnect error';
+            console.error('Redis disconnect failed:', errorMessage);
+            throw error;
         }
     }
 }
-function getRedisClient() {
+function getRedis() {
     if (!redisClient) {
-        redisClient = createRedisClient();
+        exports.redis = redisClient = createRedisClient();
     }
     return redisClient;
 }
-// Cache helper functions
+// Cache utility functions
 async function cacheGet(key) {
-    const client = getRedisClient();
-    return client.get(key);
-}
-async function cacheSet(key, value, ttlSeconds) {
-    const client = getRedisClient();
-    if (ttlSeconds) {
-        await client.setex(key, ttlSeconds, value);
+    const client = getRedis();
+    const data = await client.get(key);
+    if (!data)
+        return null;
+    try {
+        return JSON.parse(data);
     }
-    else {
-        await client.set(key, value);
+    catch {
+        return null;
     }
 }
-async function cacheDelete(key) {
-    const client = getRedisClient();
+async function cacheSet(key, value, ttlSeconds = 3600) {
+    const client = getRedis();
+    await client.setex(key, ttlSeconds, JSON.stringify(value));
+}
+async function cacheDel(key) {
+    const client = getRedis();
     await client.del(key);
 }
+async function cacheDelete(key) {
+    return cacheDel(key);
+}
 async function cacheDeletePattern(pattern) {
-    const client = getRedisClient();
+    const client = getRedis();
     const keys = await client.keys(pattern);
     if (keys.length > 0) {
         await client.del(...keys);

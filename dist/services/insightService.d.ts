@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { IInsightDocument, CreateInsightDTO, UpdateInsightDTO } from '../models/Insight';
+import { IInsightDocument, InsightStatus } from '../models/Insight';
 export declare const CreateInsightSchema: z.ZodObject<{
     userId: z.ZodString;
     merchantId: z.ZodOptional<z.ZodString>;
@@ -10,7 +10,7 @@ export declare const CreateInsightSchema: z.ZodObject<{
     recommendation: z.ZodString;
     actionData: z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodUnknown>>;
     confidence: z.ZodNumber;
-    expiresAt: z.ZodEffects<z.ZodUnion<[z.ZodString, z.ZodDate]>, Date, string | Date>;
+    expiresAt: z.ZodUnion<[z.ZodString, z.ZodDate]>;
     metadata: z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodUnknown>>;
 }, "strip", z.ZodTypeAny, {
     type: "churn_risk" | "upsell" | "cross_sell" | "reorder" | "campaign" | "general";
@@ -20,7 +20,7 @@ export declare const CreateInsightSchema: z.ZodObject<{
     description: string;
     recommendation: string;
     confidence: number;
-    expiresAt: Date;
+    expiresAt: string | Date;
     merchantId?: string | undefined;
     actionData?: Record<string, unknown> | undefined;
     metadata?: Record<string, unknown> | undefined;
@@ -66,16 +66,16 @@ export declare const InsightQuerySchema: z.ZodObject<{
     status: z.ZodOptional<z.ZodEnum<["new", "viewed", "actioned", "dismissed"]>>;
     type: z.ZodOptional<z.ZodEnum<["churn_risk", "upsell", "cross_sell", "reorder", "campaign", "general"]>>;
     priority: z.ZodOptional<z.ZodEnum<["high", "medium", "low"]>>;
-    limit: z.ZodDefault<z.ZodNumber>;
-    skip: z.ZodDefault<z.ZodNumber>;
-    includeExpired: z.ZodDefault<z.ZodBoolean>;
+    limit: z.ZodOptional<z.ZodNumber>;
+    skip: z.ZodOptional<z.ZodNumber>;
+    includeExpired: z.ZodOptional<z.ZodBoolean>;
 }, "strip", z.ZodTypeAny, {
-    skip: number;
-    limit: number;
-    includeExpired: boolean;
     type?: "churn_risk" | "upsell" | "cross_sell" | "reorder" | "campaign" | "general" | undefined;
     status?: "new" | "viewed" | "actioned" | "dismissed" | undefined;
+    skip?: number | undefined;
     priority?: "high" | "medium" | "low" | undefined;
+    limit?: number | undefined;
+    includeExpired?: boolean | undefined;
 }, {
     type?: "churn_risk" | "upsell" | "cross_sell" | "reorder" | "campaign" | "general" | undefined;
     status?: "new" | "viewed" | "actioned" | "dismissed" | undefined;
@@ -84,23 +84,20 @@ export declare const InsightQuerySchema: z.ZodObject<{
     limit?: number | undefined;
     includeExpired?: boolean | undefined;
 }>;
-interface ServiceResult<T> {
+export interface ServiceResult<T> {
     success: boolean;
     data?: T;
     error?: string;
     statusCode: number;
 }
-export declare function create(data: CreateInsightDTO): Promise<ServiceResult<IInsightDocument>>;
-export declare function update(id: string, data: UpdateInsightDTO): Promise<ServiceResult<IInsightDocument>>;
-export declare function remove(id: string): Promise<ServiceResult<{
+export declare function createNewInsight(data: unknown): Promise<ServiceResult<IInsightDocument>>;
+export declare function getInsightById(id: string): Promise<ServiceResult<IInsightDocument>>;
+export declare function getUserInsights(userId: string, query?: unknown): Promise<ServiceResult<IInsightDocument[]>>;
+export declare function getMerchantInsights(merchantId: string, query?: unknown): Promise<ServiceResult<IInsightDocument[]>>;
+export declare function updateInsightStatus(id: string, data: unknown): Promise<ServiceResult<IInsightDocument>>;
+export declare function dismissInsightById(id: string): Promise<ServiceResult<IInsightDocument>>;
+export declare function removeInsight(id: string): Promise<ServiceResult<{
     deleted: boolean;
 }>>;
-export declare function dismiss(id: string, userId: string): Promise<ServiceResult<IInsightDocument>>;
-export declare function getInsightById(id: string): Promise<ServiceResult<IInsightDocument | null>>;
-export declare function getUserInsights(userId: string, query?: unknown): Promise<ServiceResult<unknown[]>>;
-export declare function getMerchantInsights(merchantId: string, query?: unknown): Promise<ServiceResult<unknown[]>>;
-export declare function getUserInsightCount(userId: string): Promise<ServiceResult<{
-    count: number;
-}>>;
-export {};
+export declare function getUserInsightCount(userId: string, status?: InsightStatus): Promise<ServiceResult<number>>;
 //# sourceMappingURL=insightService.d.ts.map

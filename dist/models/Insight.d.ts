@@ -53,8 +53,8 @@ export interface InsightQueryOptions {
     includeExpired?: boolean;
 }
 export declare const Insight: Model<IInsightDocument>;
-export declare function findUserInsights(userId: string, options?: InsightQueryOptions): Promise<unknown[]>;
-export declare function findMerchantInsights(merchantId: string, options?: InsightQueryOptions): Promise<unknown[]>;
+export declare function findUserInsights(userId: string, options?: InsightQueryOptions): Promise<IInsightDocument[]>;
+export declare function findMerchantInsights(merchantId: string, options?: InsightQueryOptions): Promise<IInsightDocument[]>;
 export declare function findInsightById(id: string): Promise<IInsightDocument | null>;
 export declare function createInsight(data: CreateInsightDTO): Promise<IInsightDocument>;
 export declare function updateInsight(id: string, data: UpdateInsightDTO): Promise<IInsightDocument | null>;
