@@ -20,7 +20,7 @@
  */
 
 import mongoose from 'mongoose';
-import { logger } from './logger';
+import logger from '../utils/logger';
 
 const MAX_RETRIES = 5;
 const RETRY_DELAY_MS = 5000;

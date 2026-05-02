@@ -23,7 +23,7 @@
  */
 
 import IORedis from 'ioredis';
-import { logger } from './logger';
+import logger from '../utils/logger';
 import { randomUUID, randomInt } from 'crypto';
 
 export interface RedisConfig {
