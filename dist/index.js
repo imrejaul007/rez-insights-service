@@ -6,7 +6,10 @@ Object.defineProperty(exports, "__esModule", { value: true });
 const express_1 = __importDefault(require("express"));
 const mongodb_1 = require("./config/mongodb");
 const redis_1 = require("./config/redis");
+const sentry_1 = require("./config/sentry");
 const insights_routes_1 = __importDefault(require("./routes/insights.routes"));
+// Initialize Sentry
+(0, sentry_1.initSentry)();
 const app = (0, express_1.default)();
 app.use(express_1.default.json({ limit: '10mb' }));
 app.use(express_1.default.urlencoded({ extended: true, limit: '10mb' }));
