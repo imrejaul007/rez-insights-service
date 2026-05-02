@@ -28,7 +28,7 @@ exports.connectMongoDB = connectMongoDB;
 exports.disconnectMongoDB = disconnectMongoDB;
 exports.isMongoConnected = isMongoConnected;
 const mongoose_1 = __importDefault(require("mongoose"));
-const logger_1 = require("./logger");
+const logger_1 = __importDefault(require("../utils/logger"));
 const MAX_RETRIES = 5;
 const RETRY_DELAY_MS = 5000;
 /**
@@ -84,7 +84,7 @@ async function connectMongoDB() {
     const authSource = process.env.MONGODB_AUTH_SOURCE || 'admin';
     const hasCredentials = !!(process.env.MONGODB_USERNAME && process.env.MONGODB_PASSWORD);
     if (hasCredentials) {
-        logger_1.logger.info('[MongoDB] Authentication enabled (credentials from env vars)');
+        logger_1.default.info('[MongoDB] Authentication enabled (credentials from env vars)');
     }
     const options = {
         maxPoolSize: 20,
@@ -96,14 +96,14 @@ async function connectMongoDB() {
         readPreference: (process.env.MONGODB_READ_PREFERENCE || 'primary'),
         authSource: authSource,
     };
-    mongoose_1.default.connection.on('connected', () => logger_1.logger.info('[MongoDB] Connected', { uri: maskUri(uri) }));
-    mongoose_1.default.connection.on('disconnected', () => logger_1.logger.warn('[MongoDB] Disconnected'));
-    mongoose_1.default.connection.on('error', (err) => logger_1.logger.error('[MongoDB] Error: ' + err.message));
-    mongoose_1.default.connection.on('reconnected', () => logger_1.logger.info('[MongoDB] Reconnected'));
+    mongoose_1.default.connection.on('connected', () => logger_1.default.info('[MongoDB] Connected', { uri: maskUri(uri) }));
+    mongoose_1.default.connection.on('disconnected', () => logger_1.default.warn('[MongoDB] Disconnected'));
+    mongoose_1.default.connection.on('error', (err) => logger_1.default.error('[MongoDB] Error: ' + err.message));
+    mongoose_1.default.connection.on('reconnected', () => logger_1.default.info('[MongoDB] Reconnected'));
     for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
         try {
             await mongoose_1.default.connect(uri, options);
-            logger_1.logger.info('[MongoDB] Connected successfully', {
+            logger_1.default.info('[MongoDB] Connected successfully', {
                 attempt,
                 replicaSet: options.replicaSet || 'none',
                 readPreference: options.readPreference,
@@ -112,7 +112,7 @@ async function connectMongoDB() {
             return;
         }
         catch (err) {
-            logger_1.logger.error(`[MongoDB] Connection attempt ${attempt}/${MAX_RETRIES} failed`, {
+            logger_1.default.error(`[MongoDB] Connection attempt ${attempt}/${MAX_RETRIES} failed`, {
                 error: err instanceof Error ? err.message : String(err),
             });
             if (attempt === MAX_RETRIES) {
@@ -128,10 +128,10 @@ async function connectMongoDB() {
 async function disconnectMongoDB() {
     try {
         await mongoose_1.default.disconnect();
-        logger_1.logger.info('[MongoDB] Disconnected gracefully');
+        logger_1.default.info('[MongoDB] Disconnected gracefully');
     }
     catch (err) {
-        logger_1.logger.error('[MongoDB] Error during disconnect', { error: err instanceof Error ? err.message : String(err) });
+        logger_1.default.error('[MongoDB] Error during disconnect', { error: err instanceof Error ? err.message : String(err) });
     }
 }
 /**

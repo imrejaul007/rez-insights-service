@@ -30,7 +30,7 @@ exports.createRedisClient = createRedisClient;
 exports.createBullMqRedisClient = createBullMqRedisClient;
 exports.maskRedisUrl = maskRedisUrl;
 const ioredis_1 = __importDefault(require("ioredis"));
-const logger_1 = require("./logger");
+const logger_1 = __importDefault(require("../utils/logger"));
 const crypto_1 = require("crypto");
 /**
  * Get Redis password from environment
@@ -77,7 +77,7 @@ function createRedisClient() {
     const username = getRedisUsername();
     const hasAuth = !!(password || username);
     if (hasAuth) {
-        logger_1.logger.info('[Redis] Authentication enabled', {
+        logger_1.default.info('[Redis] Authentication enabled', {
             hasPassword: !!password,
             hasUsername: !!username,
             mode: sentinelRaw ? 'sentinel' : 'single',
